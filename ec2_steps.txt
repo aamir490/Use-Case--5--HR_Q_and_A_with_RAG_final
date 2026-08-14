@@ -58,21 +58,20 @@ ssh -i "C:\path\to\hr-rag-key.pem" ubuntu@<EC2_PUBLIC_IP>
 # STEP 4: Update EC2 & Install Python 3.12
 # (Run all remaining steps INSIDE EC2 terminal)
 # ==============================================================
-sudo apt update && sudo apt upgrade -y
-
-# Install Python 3.12 (matches local development environment)
+# Step 1 — Add the deadsnakes PPA correctly:
+sudo apt update
 sudo apt install -y software-properties-common
 sudo add-apt-repository ppa:deadsnakes/ppa -y
 sudo apt update
-sudo apt install -y python3.12 python3.12-venv python3.12-dev python3-pip
 
-# Verify Python 3.12 installed
+# Step 2 — Now install Python 3.12:
+sudo apt install -y python3.12 python3.12-venv python3.12-dev
+
+# Step 3 — Install pip separately:
+curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+
+# Step 4 — Verify:
 python3.12 --version
-# Expected: Python 3.12.x
-
-# Verify pip
-pip3 --version
-
 
 # ==============================================================
 # STEP 5: Install AWS CLI on EC2
