@@ -1,173 +1,320 @@
-# ==========================================================
-# EC2 Deployment Guide — HR Q&A RAG App
-# ==========================================================
+# ==============================================================
+# EC2 Deployment Guide — NovaMindAI HR Q&A RAG App
+# Project: HR QA (Retrieval-Augmented Generation)
+# Stack:   Python 3.12 | Streamlit | LangChain | FAISS | Amazon Bedrock
+# Region:  us-east-1
+# ==============================================================
 
 
-# ==========================================================
+# ==============================================================
 # STEP 1: Launch EC2 Instance (AWS Console)
-# ==========================================================
-# 1. Go to AWS Console → EC2 → Launch Instance
-# 2. Name: hr-rag-app
-# 3. AMI: Ubuntu Server 22.04 LTS (64-bit x86)
-# 4. Instance Type: t2.medium (minimum — needs RAM for FAISS index)
-# 5. Key Pair: Create new → name it "hr-rag-key" → Download .pem file
-#    Save it to: E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem
-# 6. Security Group — Add these Inbound Rules:
-#    - SSH        | Port 22   | Source: My IP
-#    - Custom TCP | Port 8501 | Source: 0.0.0.0/0  (Streamlit)
+# ==============================================================
+# 1. Go to: https://console.aws.amazon.com/ec2 → Click "Launch Instance"
+# 2. Name:          hr-rag-novamindai
+# 3. AMI:           Ubuntu Server 22.04 LTS (64-bit x86)
+# 4. Instance Type: t2.medium  ← minimum (FAISS index needs RAM)
+#                   t2.micro will run out of memory — do NOT use it
+# 5. Key Pair:
+#       → Click "Create new key pair"
+#       → Name: hr-rag-key
+#       → Type: RSA
+#       → Format: .pem
+#       → Download and save to a safe location on your machine
+# 6. Network Settings → Edit → Add these Inbound Rules:
+#       Rule 1: SSH        | Port 22   | Source: My IP (for secure access)
+#       Rule 2: Custom TCP | Port 8501 | Source: 0.0.0.0/0 (Streamlit)
 # 7. Storage: 20 GB gp3 (default is fine)
-# 8. Click Launch Instance
-# 9. Note the Public IPv4 address (e.g. 54.123.45.67)
+# 8. Click "Launch Instance"
+# 9. Note the Public IPv4 address after launch (e.g. 54.123.45.67)
+#    → You will use this IP in every step below
 
 
-# ==========================================================
-# STEP 2: Connect to EC2 from Your Local Machine
-# ==========================================================
-# Fix .pem file permissions (run in PowerShell as Admin):
-icacls "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" /inheritance:r /grant:r "%USERNAME%:R"
+# ==============================================================
+# STEP 2: Fix .pem Key Permissions (Run on YOUR LOCAL Machine)
+# ==============================================================
+# Run in PowerShell on your Windows machine before SSH:
+icacls "C:\path\to\hr-rag-key.pem" /inheritance:r /grant:r "%USERNAME%:R"
 
-# SSH into EC2 (replace <EC2_PUBLIC_IP> with your instance IP):
-ssh -i "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" ubuntu@<EC2_PUBLIC_IP>
+# Replace "C:\path\to\hr-rag-key.pem" with the actual path where you saved the .pem file
+# Example:
+# icacls "E:\GenAi-Project-Udemy\HR_QA_26June2025\hr-rag-key.pem" /inheritance:r /grant:r "%USERNAME%:R"
 
 
-# ==========================================================
-# STEP 3: Update & Install Python on EC2
-# ==========================================================
+# ==============================================================
+# STEP 3: SSH Into EC2 (Run on YOUR LOCAL Machine)
+# ==============================================================
+# Replace <EC2_PUBLIC_IP> with your actual EC2 public IP address
+
+ssh -i "C:\path\to\hr-rag-key.pem" ubuntu@<EC2_PUBLIC_IP>
+
+# Example:
+# ssh -i "E:\GenAi-Project-Udemy\HR_QA_26June2025\hr-rag-key.pem" ubuntu@54.123.45.67
+
+# You should now be inside the EC2 terminal:
+# ubuntu@ip-xxx-xxx-xxx-xxx:~$
+
+
+# ==============================================================
+# STEP 4: Update EC2 & Install Python 3.12
+# (Run all remaining steps INSIDE EC2 terminal)
+# ==============================================================
 sudo apt update && sudo apt upgrade -y
-sudo apt install python3 python3-pip python3-venv -y
 
-# Verify versions
-python3 --version
+# Install Python 3.12 (matches local development environment)
+sudo apt install -y software-properties-common
+sudo add-apt-repository ppa:deadsnakes/ppa -y
+sudo apt update
+sudo apt install -y python3.12 python3.12-venv python3.12-dev python3-pip
+
+# Verify Python 3.12 installed
+python3.12 --version
+# Expected: Python 3.12.x
+
+# Verify pip
 pip3 --version
 
 
-# ==========================================================
-# STEP 4: Install AWS CLI on EC2
-# ==========================================================
-sudo apt install awscli -y
+# ==============================================================
+# STEP 5: Install AWS CLI on EC2
+# ==============================================================
+sudo apt install -y awscli
+
+# Verify
 aws --version
+# Expected: aws-cli/x.x.x Python/3.x.x Linux/...
 
 
-# ==========================================================
-# STEP 5: Configure AWS Credentials on EC2
-# ==========================================================
+# ==============================================================
+# STEP 6: Configure AWS Credentials on EC2
+# ==============================================================
 aws configure
+
 # Enter when prompted:
-# AWS Access Key ID     : <your access key>
-# AWS Secret Access Key : <your secret key>
+# AWS Access Key ID     : <YOUR_AWS_ACCESS_KEY_ID>
+# AWS Secret Access Key : <YOUR_AWS_SECRET_ACCESS_KEY>
 # Default region name   : us-east-1
 # Default output format : json
 
-AWS_ACCESS_KEY_ID            : <YOUR_AWS_ACCESS_KEY_ID>
-AWS_SECRET_ACCESS_KEY        : <YOUR_AWS_SECRET_ACCESS_KEY>
-AWS_REGION                   : us-east-1           us-east-1 → US East (N. Virginia)
-Default output format [json] : json
+# ⚠️ SECURITY: Never hardcode credentials in files or scripts.
+#    For production use IAM Instance Role instead (see STEP 13).
 
-
-# Verify credentials
+# Verify credentials work
 aws sts get-caller-identity
 
-aws s3 ls
+# Verify Bedrock access (Titan embeddings)
+aws bedrock list-foundation-models --region us-east-1 --query \
+  "modelSummaries[?modelId=='amazon.titan-embed-text-v1'].modelId" --output text
 
-aws s3 ls s3://rag-app-aamir
+# Verify AWS config
+aws configure list
 
-mkdir -p ~/rag-app-aamir
 
-cd rag-app-aamir/
+# ==============================================================
+# STEP 7: Create Project Directory on EC2
+# ==============================================================
+mkdir ~/hr-rag
+cd ~/hr-rag
 
-aws s3 cp s3://rag-app-aamir ~/rag-app-aamir --recursive
 
-# ==========================================================
-# STEP 6: Copy Project Files from Local to EC2
-# ==========================================================
-# Run this from your LOCAL PowerShell (not EC2):
-scp -i "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" `
+# ==============================================================
+# STEP 8: Copy Project Files from LOCAL Machine to EC2
+# ==============================================================
+# Run this from YOUR LOCAL PowerShell (not EC2)
+# Replace <EC2_PUBLIC_IP> with your actual IP
+
+# Copy individual files:
+scp -i "C:\path\to\hr-rag-key.pem" `
     "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\rag_backend.py" `
     "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\rag_frontend.py" `
+    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\titien_model_test.py" `
+    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\requirements.txt" `
+    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\mylogo2.png" `
     ubuntu@<EC2_PUBLIC_IP>:~/hr-rag/
 
-# Or copy the entire folder:
-scp -i "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" -r `
-    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\" `
+# OR copy the entire project folder at once:
+scp -i "C:\path\to\hr-rag-key.pem" -r `
+    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025" `
     ubuntu@<EC2_PUBLIC_IP>:~/hr-rag/
 
+# After copying, go back to the EC2 terminal and verify files arrived:
+ls ~/hr-rag/
+# Expected: rag_backend.py  rag_frontend.py  requirements.txt  mylogo2.png ...
 
-# ==========================================================
-# STEP 7: Set Up Virtual Environment on EC2
-# ==========================================================
-# Back on EC2 terminal:
 
-python3 -m venv .venv
+# ==============================================================
+# STEP 9: Create Python 3.12 Virtual Environment on EC2
+# ==============================================================
+cd ~/hr-rag
+
+# Create .venv using Python 3.12
+python3.12 -m venv .venv
+
+# Activate
 source .venv/bin/activate
 
+# Verify — should show Python 3.12.x
+python --version
 
-# ==========================================================
-# STEP 8: Install Required Packages on EC2
-# ==========================================================
-pip install --upgrade pip
+# Upgrade pip
+python -m pip install --upgrade pip
+
+
+# ==============================================================
+# STEP 10: Install Required Packages on EC2
+# ==============================================================
+# Option A — Install from requirements.txt (recommended)
+pip install -r requirements.txt
+
+# Option B — Install manually (if requirements.txt is missing)
 pip install boto3 langchain langchain-aws langchain-community langchain-text-splitters pypdf faiss-cpu streamlit
 
+# Verify all packages installed
+pip list
 
-# ==========================================================
-# STEP 9: Run Streamlit App on EC2
-# ==========================================================
-# Run in foreground (test first):
+
+# ==============================================================
+# STEP 11: Test Bedrock Connection Before Starting App
+# ==============================================================
+# Run the model test first — same as local development flow
+python titien_model_test.py
+
+# Expected output:
+# === Test 1: Titan Embedding Model ===
+# Token Count: 2
+# Embedding Length: 1536
+# First 5 values: [...]
+#
+# === Test 2: Claude Haiku LLM ===
+# Response: AWS Bedrock is a managed service...
+
+# If this fails — fix AWS credentials before proceeding to Streamlit
+
+
+# ==============================================================
+# STEP 12: Run Streamlit App on EC2
+# ==============================================================
+
+# --- Option A: Foreground (for testing, closes when you disconnect) ---
 streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0
 
 # Access in browser:
 # http://<EC2_PUBLIC_IP>:8501
 
+# Stop with: Ctrl + C
 
-# ==========================================================
-# STEP 10: Run App in Background (so it keeps running after logout)
-# ==========================================================
-nohup streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0 &
 
-# Check it is running:
+# --- Option B: Background with nohup (stays running after logout) ---
+nohup streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0 > ~/hr-rag/streamlit.log 2>&1 &
+
+# Check it started:
 ps aux | grep streamlit
 
-# To stop the app:
-pkill -f streamlit
-
-
-# ==========================================================
-# STEP 11: Verify App is Accessible
-# ==========================================================
-# Open browser and go to:
-# http://<EC2_PUBLIC_IP>:8501
-#
-# You should see the HR Q & A with RAG page
-
-
-# ==========================================================
-# MAINTENANCE COMMANDS (on EC2)
-# ==========================================================
-
 # View live logs:
-cat nohup.out
+tail -f ~/hr-rag/streamlit.log
 
-# Restart app:
-pkill -f streamlit
-nohup streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0 &
+# Access in browser:
+# http://<EC2_PUBLIC_IP>:8501
 
-# Reactivate venv after reconnecting:
+
+# ==============================================================
+# STEP 13: (Optional) IAM Instance Role — Production Best Practice
+# ==============================================================
+# Instead of running "aws configure" with a user key on EC2,
+# attach an IAM Role to the EC2 instance:
+#
+# 1. AWS Console → IAM → Roles → Create Role
+# 2. Trusted entity: EC2
+# 3. Attach policy with ONLY these permissions:
+#    {
+#      "Effect": "Allow",
+#      "Action": "bedrock:InvokeModel",
+#      "Resource": [
+#        "arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v1",
+#        "arn:aws:bedrock:us-east-1::foundation-model/us.anthropic.claude-haiku-4-5-20251001-v1:0"
+#      ]
+#    }
+# 4. Name the role: hr-rag-bedrock-role
+# 5. EC2 Console → Select your instance → Actions → Security
+#    → Modify IAM Role → Select hr-rag-bedrock-role → Update
+#
+# With an instance role, remove credentials_profile_name from rag_backend.py:
+#    BedrockEmbeddings(model_id='amazon.titan-embed-text-v1')
+#    ChatBedrock(model_id='us.anthropic.claude-haiku-4-5-20251001-v1:0', ...)
+# AWS SDK picks up the role automatically — no credentials file needed.
+
+
+# ==============================================================
+# STEP 14: (Optional) Elastic IP — Fix the Public IP
+# ==============================================================
+# EC2 public IP changes every time you stop/start the instance.
+# Elastic IP gives you a fixed permanent IP address.
+#
+# AWS Console → EC2 → Elastic IPs
+# → Allocate Elastic IP address
+# → Associate Elastic IP → Select your instance
+#
+# Your app will now always be at the same IP — no need to update URLs.
+
+
+# ==============================================================
+# MAINTENANCE COMMANDS (on EC2)
+# ==============================================================
+
+# Re-activate venv after reconnecting to EC2
 cd ~/hr-rag
 source .venv/bin/activate
 
-# Check running processes:
+# Check Streamlit is running
 ps aux | grep streamlit
 
-# Stop EC2 instance (from AWS Console or CLI):
-aws ec2 stop-instances --instance-ids <your-instance-id> --region us-east-1
+# View logs
+tail -f ~/hr-rag/streamlit.log
+
+# Stop Streamlit
+pkill -f streamlit
+
+# Restart Streamlit
+nohup streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0 > ~/hr-rag/streamlit.log 2>&1 &
+
+# Check port 8501 is listening
+netstat -tlnp | grep 8501
+
+# Check EC2 memory (FAISS needs RAM)
+free -h
+
+# Check disk usage
+df -h
 
 
-# ==========================================================
+# ==============================================================
+# QUICK START — When Reconnecting to EC2 Later
+# ==============================================================
+# 1. SSH in
+ssh -i "C:\path\to\hr-rag-key.pem" ubuntu@<EC2_PUBLIC_IP>
+
+# 2. Navigate and activate venv
+cd ~/hr-rag
+source .venv/bin/activate
+
+# 3. Test Bedrock connection
+python titien_model_test.py
+
+# 4. Start app in background
+nohup streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0 > ~/hr-rag/streamlit.log 2>&1 &
+
+# 5. Open in browser
+# http://<EC2_PUBLIC_IP>:8501
+
+
+# ==============================================================
 # IMPORTANT NOTES
-# ==========================================================
-# 1. Never commit AWS credentials to GitHub
-# 2. t2.micro may run out of RAM — use t2.medium or higher
-# 3. Port 8501 must be open in Security Group for Streamlit
-# 4. Public IP changes on every restart — use Elastic IP to fix it
-#    AWS Console → EC2 → Elastic IPs → Allocate → Associate with instance
-# 5. Always activate venv before running the app:
-#    source .venv/bin/activate
+# ==============================================================
+# 1. Use t2.medium or higher — FAISS index needs memory. t2.micro WILL crash.
+# 2. Port 8501 must be open in EC2 Security Group for Streamlit.
+# 3. Elastic IP prevents your app URL from changing on every restart.
+# 4. Use IAM Instance Role in production — never store credentials in files.
+# 5. Python 3.12 matches the local dev environment — use it on EC2 too.
+# 6. Run titien_model_test.py before Streamlit — confirm Bedrock works first.
+# 7. The FAISS index rebuilds in memory on every new session — this takes
+#    30-60 seconds. This is a PoC limitation — for production, persist to S3.
+# 8. Never commit .pem files or AWS credentials to GitHub.
