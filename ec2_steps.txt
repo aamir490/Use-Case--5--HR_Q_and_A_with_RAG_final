@@ -1,0 +1,173 @@
+# ==========================================================
+# EC2 Deployment Guide — HR Q&A RAG App
+# ==========================================================
+
+
+# ==========================================================
+# STEP 1: Launch EC2 Instance (AWS Console)
+# ==========================================================
+# 1. Go to AWS Console → EC2 → Launch Instance
+# 2. Name: hr-rag-app
+# 3. AMI: Ubuntu Server 22.04 LTS (64-bit x86)
+# 4. Instance Type: t2.medium (minimum — needs RAM for FAISS index)
+# 5. Key Pair: Create new → name it "hr-rag-key" → Download .pem file
+#    Save it to: E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem
+# 6. Security Group — Add these Inbound Rules:
+#    - SSH        | Port 22   | Source: My IP
+#    - Custom TCP | Port 8501 | Source: 0.0.0.0/0  (Streamlit)
+# 7. Storage: 20 GB gp3 (default is fine)
+# 8. Click Launch Instance
+# 9. Note the Public IPv4 address (e.g. 54.123.45.67)
+
+
+# ==========================================================
+# STEP 2: Connect to EC2 from Your Local Machine
+# ==========================================================
+# Fix .pem file permissions (run in PowerShell as Admin):
+icacls "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" /inheritance:r /grant:r "%USERNAME%:R"
+
+# SSH into EC2 (replace <EC2_PUBLIC_IP> with your instance IP):
+ssh -i "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" ubuntu@<EC2_PUBLIC_IP>
+
+
+# ==========================================================
+# STEP 3: Update & Install Python on EC2
+# ==========================================================
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3 python3-pip python3-venv -y
+
+# Verify versions
+python3 --version
+pip3 --version
+
+
+# ==========================================================
+# STEP 4: Install AWS CLI on EC2
+# ==========================================================
+sudo apt install awscli -y
+aws --version
+
+
+# ==========================================================
+# STEP 5: Configure AWS Credentials on EC2
+# ==========================================================
+aws configure
+# Enter when prompted:
+# AWS Access Key ID     : <your access key>
+# AWS Secret Access Key : <your secret key>
+# Default region name   : us-east-1
+# Default output format : json
+
+AWS_ACCESS_KEY_ID            : <YOUR_AWS_ACCESS_KEY_ID>
+AWS_SECRET_ACCESS_KEY        : <YOUR_AWS_SECRET_ACCESS_KEY>
+AWS_REGION                   : us-east-1           us-east-1 → US East (N. Virginia)
+Default output format [json] : json
+
+
+# Verify credentials
+aws sts get-caller-identity
+
+aws s3 ls
+
+aws s3 ls s3://rag-app-aamir
+
+mkdir -p ~/rag-app-aamir
+
+cd rag-app-aamir/
+
+aws s3 cp s3://rag-app-aamir ~/rag-app-aamir --recursive
+
+# ==========================================================
+# STEP 6: Copy Project Files from Local to EC2
+# ==========================================================
+# Run this from your LOCAL PowerShell (not EC2):
+scp -i "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" `
+    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\rag_backend.py" `
+    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\rag_frontend.py" `
+    ubuntu@<EC2_PUBLIC_IP>:~/hr-rag/
+
+# Or copy the entire folder:
+scp -i "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\hr-rag-key.pem" -r `
+    "E:\GenAi-Project-Udemy\HR_QA_26June2025\HR_QA_26June2025\" `
+    ubuntu@<EC2_PUBLIC_IP>:~/hr-rag/
+
+
+# ==========================================================
+# STEP 7: Set Up Virtual Environment on EC2
+# ==========================================================
+# Back on EC2 terminal:
+
+python3 -m venv .venv
+source .venv/bin/activate
+
+
+# ==========================================================
+# STEP 8: Install Required Packages on EC2
+# ==========================================================
+pip install --upgrade pip
+pip install boto3 langchain langchain-aws langchain-community langchain-text-splitters pypdf faiss-cpu streamlit
+
+
+# ==========================================================
+# STEP 9: Run Streamlit App on EC2
+# ==========================================================
+# Run in foreground (test first):
+streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0
+
+# Access in browser:
+# http://<EC2_PUBLIC_IP>:8501
+
+
+# ==========================================================
+# STEP 10: Run App in Background (so it keeps running after logout)
+# ==========================================================
+nohup streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0 &
+
+# Check it is running:
+ps aux | grep streamlit
+
+# To stop the app:
+pkill -f streamlit
+
+
+# ==========================================================
+# STEP 11: Verify App is Accessible
+# ==========================================================
+# Open browser and go to:
+# http://<EC2_PUBLIC_IP>:8501
+#
+# You should see the HR Q & A with RAG page
+
+
+# ==========================================================
+# MAINTENANCE COMMANDS (on EC2)
+# ==========================================================
+
+# View live logs:
+cat nohup.out
+
+# Restart app:
+pkill -f streamlit
+nohup streamlit run rag_frontend.py --server.port 8501 --server.address 0.0.0.0 &
+
+# Reactivate venv after reconnecting:
+cd ~/hr-rag
+source .venv/bin/activate
+
+# Check running processes:
+ps aux | grep streamlit
+
+# Stop EC2 instance (from AWS Console or CLI):
+aws ec2 stop-instances --instance-ids <your-instance-id> --region us-east-1
+
+
+# ==========================================================
+# IMPORTANT NOTES
+# ==========================================================
+# 1. Never commit AWS credentials to GitHub
+# 2. t2.micro may run out of RAM — use t2.medium or higher
+# 3. Port 8501 must be open in Security Group for Streamlit
+# 4. Public IP changes on every restart — use Elastic IP to fix it
+#    AWS Console → EC2 → Elastic IPs → Allocate → Associate with instance
+# 5. Always activate venv before running the app:
+#    source .venv/bin/activate
