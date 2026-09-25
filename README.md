@@ -1,18 +1,3 @@
-# 🧠 NovaMindAI — HR Q&A RAG Assistant
-
-<p align="center">
-  <strong>Retrieval-Augmented Generation (RAG) application for answering HR leave-policy questions using Amazon Bedrock, Titan Embeddings, Claude, FAISS, LangChain, and Streamlit.</strong>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" alt="Python"/>
-  <img src="https://img.shields.io/badge/AWS-Amazon%20Bedrock-FF9900?logo=amazonwebservices&logoColor=white" alt="AWS"/>
-  <img src="https://img.shields.io/badge/LangChain-RAG-1C3C3C" alt="LangChain"/>
-  <img src="https://img.shields.io/badge/Streamlit-Frontend-FF4B4B?logo=streamlit&logoColor=white" alt="Streamlit"/>
-  <img src="https://img.shields.io/badge/FAISS-Vector%20Search-0467DF" alt="FAISS"/>
-  <img src="https://img.shields.io/badge/Architecture-RAG-8A2BE2" alt="RAG"/>
-  <img src="https://img.shields.io/badge/Status-Proof%20of%20Concept-F5A623" alt="PoC"/>
-</p>
 
 ---
 
